@@ -78,9 +78,12 @@ class ProposalLayer(nn.Module):
         dist = proposals_ordered[:, 2]
         first_mask = (dist > nms_range_list[0]) & (dist <= nms_range_list[1])
 
+
         gt_dist = gt_boxes3d[:,2]
-        gt_mask = (gt_dist>nms_range_list[1])
-        gt_boxes3d=gt_boxes3d[gt_mask]
+        gt_mask1=(gt_dist<=nms_range_list[1])
+        gt_boxes3d1 = gt_boxes3d[gt_mask1]
+        gt_mask2=(gt_dist>nms_range_list[1])
+        gt_boxes3d2 = gt_boxes3d[gt_mask2]
 
         for i in range(1, len(nms_range_list)):
             # get proposal distance mask
@@ -115,29 +118,46 @@ class ProposalLayer(nn.Module):
             keep_idx = keep_idx[:post_top_n_list[i]] #[358][154]
 
             #添加了改进算法
-            num1 = keep_idx.new_zeros(2700).long()
-            if gt_mask.sum()!=0 and i == 2:
+            if gt_mask1.sum()!=0 and i == 1:
                 # include gt boxes in the candidate rois
-                iou3d = iou3d_utils.boxes_iou3d_gpu(cur_proposals, gt_boxes3d)  # (N, M)
+                num = keep_idx.new_zeros(6300).long()
+                iou3d = iou3d_utils.boxes_iou3d_gpu(cur_proposals, gt_boxes3d1)  # (N, M)
                 max_overlaps,gt_assignment = torch.max(iou3d,dim=1) #values, indexs
                 iou_idx=torch.nonzero((max_overlaps>0)).view(-1)
-                num1[iou_idx]=iou_idx
-                #print(keep_idx,iou_idx,111)
-                if iou_idx.numel()<post_top_n_list[2]:
-                    print(iou_idx.numel())
+                num[iou_idx]=iou_idx
+                #print(keep_idx,iou_idx)
+                if iou_idx.numel()<post_top_n_list[1]:
+                    print(iou_idx.numel(),post_top_n_list[1])
                     for i in range(len(keep_idx)):
                         if keep_idx[i] not in iou_idx:
-                            num1[keep_idx[i]]=keep_idx[i]
-                        if num1[num1>0].numel()>=post_top_n_list[2]:
+                            num[keep_idx[i]]=keep_idx[i]
+                        if num[num>0].numel()>=post_top_n_list[1]:
                             break
-                    keep_idx=num1[num1>0]
-                    #print(keep_idx,2222)
-                elif iou_idx.numel()>post_top_n_list[2]:
-                    print(iou_idx.numel(),22)
+                    keep_idx=num[num>0]
+                    #print(keep_idx)
+                elif iou_idx.numel()>post_top_n_list[1]:#表示小于40米的目标点密集
+                    print(iou_idx.numel(),post_top_n_list[1])
                     keep_idx = keep_idx[:post_top_n_list[i]]
-                #     keep_idx=iou_idx[0:154]
-                # else:
-                #     keep_idx=iou_idx
+            elif gt_mask2.sum()!=0 and i == 2:
+                # include gt boxes in the candidate rois
+                num = keep_idx.new_zeros(2700).long()
+                iou3d = iou3d_utils.boxes_iou3d_gpu(cur_proposals, gt_boxes3d2)  # (N, M)
+                max_overlaps,gt_assignment = torch.max(iou3d,dim=1) #values, indexs
+                iou_idx=torch.nonzero((max_overlaps>0)).view(-1)
+                num[iou_idx]=iou_idx
+                #print(keep_idx,iou_idx)
+                if iou_idx.numel()<post_top_n_list[2]:
+                    print(iou_idx.numel(),post_top_n_list[2])
+                    for i in range(len(keep_idx)):
+                        if keep_idx[i] not in iou_idx:
+                            num[keep_idx[i]]=keep_idx[i]
+                        if num[num>0].numel()>=post_top_n_list[2]:#表示大于40米的目标点密集
+                            break
+                    keep_idx=num[num>0]
+                    #print(keep_idx)
+                elif iou_idx.numel()>post_top_n_list[2]:#表示大于40米的目标点密集
+                    print(iou_idx.numel(),post_top_n_list[2])
+                    keep_idx = keep_idx[:post_top_n_list[2]]
             scores_single_list.append(cur_scores[keep_idx])
             proposals_single_list.append(cur_proposals[keep_idx])
 

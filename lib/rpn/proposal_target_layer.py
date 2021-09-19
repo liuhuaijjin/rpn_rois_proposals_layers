@@ -15,8 +15,7 @@ class ProposalTargetLayer(nn.Module):
         roi_boxes3d, gt_boxes3d = input_dict['roi_boxes3d'], input_dict['gt_boxes3d'] #(B,512,7)(B,gt_M,7)
 
         batch_rois, batch_gt_of_rois, batch_roi_iou = self.sample_rois_for_rcnn(roi_boxes3d, gt_boxes3d) #(B,64,7)(B,64,7)
-        batch_rois1, batch_gt_of_rois1, batch_roi_iou1 = self.sample_rois_for_rcnn(input_dict['roi_boxes3d1'],
-                                                                                   gt_boxes3d)
+        batch_rois1, batch_gt_of_rois1,batch_roi_iou1 = self.sample_rois_for_rcnn(input_dict['roi_boxes3d1'],gt_boxes3d)
         # 显示效果
         points0 = input_dict['roi_boxes3d1'][0, :, 0:3].cpu().numpy()
         pcd0 = o3d.geometry.PointCloud()
@@ -34,8 +33,7 @@ class ProposalTargetLayer(nn.Module):
         pcd3 = o3d.geometry.PointCloud()
         pcd3.points = o3d.utility.Vector3dVector(point_bg)
         pcd3.paint_uniform_color([0.5, 0.5, 0.5])
-        o3d.visualization.draw_geometries([pcd0, pcd1, pcd2, pcd3], window_name='cloud and color', width=800,
-                                          height=600)
+        o3d.visualization.draw_geometries([pcd0, pcd1, pcd2, pcd3], window_name='pcd1-4', width=800, height=600)
         # print(input_dict['gt_boxes3d'][0])
         points1 = input_dict['roi_boxes3d1'][0, :, 0:3].cpu().numpy()
         pcd1 = o3d.geometry.PointCloud()
@@ -49,22 +47,7 @@ class ProposalTargetLayer(nn.Module):
         pcd3 = o3d.geometry.PointCloud()
         pcd3.points = o3d.utility.Vector3dVector(point_bg)
         pcd3.paint_uniform_color([0.5, 0.5, 0.5])
-        o3d.visualization.draw_geometries([pcd1, pcd2, pcd3], window_name='cloud and color', width=800, height=600)
-
-        points1 = batch_rois[0, :, 0:3].cpu().numpy()
-        pcd1 = o3d.geometry.PointCloud()
-        pcd1.points = o3d.utility.Vector3dVector(points1)
-        pcd1.paint_uniform_color([0, 1, 0])
-        point_fg = gt_boxes3d[0, :, :3].cpu().numpy()
-        pcd2 = o3d.geometry.PointCloud()
-        pcd2.points = o3d.utility.Vector3dVector(point_fg)
-        pcd2.paint_uniform_color([1, 0, 0])
-        point_bg = input_dict['rpn_xyz'][0, :, :3].cpu().numpy()
-        pcd3 = o3d.geometry.PointCloud()
-        pcd3.points = o3d.utility.Vector3dVector(point_bg)
-        pcd3.paint_uniform_color([0.5, 0.5, 0.5])
-        o3d.visualization.draw_geometries([pcd0, pcd1, pcd2, pcd3], window_name='cloud and color', width=800,
-                                          height=600)
+        o3d.visualization.draw_geometries([pcd1, pcd2, pcd3], window_name='raw_rois512', width=800, height=600)
 
         points0 = batch_rois1[0, :, 0:3].cpu().numpy()
         pcd0 = o3d.geometry.PointCloud()
@@ -78,8 +61,21 @@ class ProposalTargetLayer(nn.Module):
         pcd3 = o3d.geometry.PointCloud()
         pcd3.points = o3d.utility.Vector3dVector(point_bg)
         pcd3.paint_uniform_color([0.5, 0.5, 0.5])
-        o3d.visualization.draw_geometries([pcd0, pcd2, pcd3], window_name='cloud and color', width=800,
-                                          height=600)
+        o3d.visualization.draw_geometries([pcd0, pcd2, pcd3], window_name='raw_rois64', width=800, height=600)
+
+        points1 = batch_rois[0, :, 0:3].cpu().numpy()
+        pcd1 = o3d.geometry.PointCloud()
+        pcd1.points = o3d.utility.Vector3dVector(points1)
+        pcd1.paint_uniform_color([0, 1, 0])
+        point_fg = gt_boxes3d[0, :, :3].cpu().numpy()
+        pcd2 = o3d.geometry.PointCloud()
+        pcd2.points = o3d.utility.Vector3dVector(point_fg)
+        pcd2.paint_uniform_color([1, 0, 0])
+        point_bg = input_dict['rpn_xyz'][0, :, :3].cpu().numpy()
+        pcd3 = o3d.geometry.PointCloud()
+        pcd3.points = o3d.utility.Vector3dVector(point_bg)
+        pcd3.paint_uniform_color([0.5, 0.5, 0.5])
+        o3d.visualization.draw_geometries([pcd1, pcd2, pcd3], window_name='new_rois64', width=800, height=600)
 
         rpn_xyz, rpn_features = input_dict['rpn_xyz'], input_dict['rpn_features']
 
