@@ -125,7 +125,7 @@ class ProposalLayer(nn.Module):
                 # 添加了改进算法
                 num1 = keep_idx.new_zeros(2700).long()
                 if gt_mask.sum() != 0 and i == 2: #判断大于40米有无目标
-                    # include gt boxes in the candidate rois
+                    # include gt boxes in the proposals rois
                     iou3d = iou3d_utils.boxes_iou3d_gpu(cur_proposals, gt_boxes3d)  # (N, M)
                     max_overlaps, gt_assignment = torch.max(iou3d, dim=1)  # values, indexs
                     iou_idx = torch.nonzero((max_overlaps > 0)).view(-1) #iou3d阈值大于０
