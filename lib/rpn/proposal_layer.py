@@ -19,7 +19,6 @@ class ProposalLayer(nn.Module):
         :param xyz: (B, N, 3)
         :return bbox3d: (B, 512, 7) bbox3d_score:(B,512)
         """
-        gt_boxes3d=input_data['gt_boxes3d']
         batch_size = xyz.shape[0]
         proposals = decode_bbox_target(xyz.view(-1, 3), rpn_reg.view(-1, rpn_reg.shape[-1]),
                                        anchor_size = self.MEAN_SIZE,
@@ -42,21 +41,28 @@ class ProposalLayer(nn.Module):
             scores_single = scores[k]
             proposals_single = proposals[k]
             order_single = sorted_idxs[k]
-            gt_boxes3d_single=gt_boxes3d[k]
-
-            if cfg.TEST.RPN_DISTANCE_BASED_PROPOSE:
-                scores_single, proposals_single = self.distance_based_proposal(scores_single, proposals_single,
+            if self.training:
+                gt_boxes3d = input_data['gt_boxes3d']
+                gt_boxes3d_single=gt_boxes3d[k]
+                if cfg.TEST.RPN_DISTANCE_BASED_PROPOSE:
+                    scores_single, proposals_single = self.distance_based_proposal(scores_single, proposals_single,
                                                                                order_single,gt_boxes3d_single)
-            else:
-                scores_single, proposals_single = self.score_based_proposal(scores_single, proposals_single,
+                else:
+                    scores_single, proposals_single = self.score_based_proposal(scores_single, proposals_single,
                                                                             order_single,gt_boxes3d_single)
-
+            else:
+                if cfg.TEST.RPN_DISTANCE_BASED_PROPOSE:
+                    scores_single, proposals_single = self.distance_based_proposal(scores_single, proposals_single,
+                                                                                   order_single)
+                else:
+                    scores_single, proposals_single = self.score_based_proposal(scores_single, proposals_single,
+                                                                                order_single)
             proposals_tot = proposals_single.size(0)
             ret_bbox3d[k, :proposals_tot] = proposals_single
             ret_scores[k, :proposals_tot] = scores_single
         return ret_bbox3d, ret_scores
 
-    def distance_based_proposal(self, scores, proposals, order, gt_boxes3d):
+    def distance_based_proposal(self, scores, proposals, order, gt_boxes3d=None):
         """
          propose rois in two area based on the distance
         :param scores: (N)
@@ -78,9 +84,10 @@ class ProposalLayer(nn.Module):
         dist = proposals_ordered[:, 2]
         first_mask = (dist > nms_range_list[0]) & (dist <= nms_range_list[1])
 
-        gt_dist = gt_boxes3d[:,2]
-        gt_mask = (gt_dist>nms_range_list[1])
-        gt_boxes3d=gt_boxes3d[gt_mask]
+        if self.training:
+            gt_dist = gt_boxes3d[:,2]
+            gt_mask=(gt_dist>nms_range_list[1])
+            gt_boxes3d = gt_boxes3d[gt_mask]
 
         for i in range(1, len(nms_range_list)):
             # get proposal distance mask
@@ -114,30 +121,29 @@ class ProposalLayer(nn.Module):
             # Fetch post nms top k　得到前40米的候选358
             keep_idx = keep_idx[:post_top_n_list[i]] #[358][154]
 
-            #添加了改进算法
-            num1 = keep_idx.new_zeros(2700).long()
-            if gt_mask.sum()!=0 and i == 2:
-                # include gt boxes in the candidate rois
-                iou3d = iou3d_utils.boxes_iou3d_gpu(cur_proposals, gt_boxes3d)  # (N, M)
-                max_overlaps,gt_assignment = torch.max(iou3d,dim=1) #values, indexs
-                iou_idx=torch.nonzero((max_overlaps>0)).view(-1)
-                num1[iou_idx]=iou_idx
-                #print(keep_idx,iou_idx,111)
-                if iou_idx.numel()<post_top_n_list[2]:
-                    print(iou_idx.numel())
-                    for i in range(len(keep_idx)):
-                        if keep_idx[i] not in iou_idx:
-                            num1[keep_idx[i]]=keep_idx[i]
-                        if num1[num1>0].numel()>=post_top_n_list[2]:
-                            break
-                    keep_idx=num1[num1>0]
-                    #print(keep_idx,2222)
-                elif iou_idx.numel()>post_top_n_list[2]:
-                    print(iou_idx.numel(),22)
-                    keep_idx = keep_idx[:post_top_n_list[i]]
-                #     keep_idx=iou_idx[0:154]
-                # else:
-                #     keep_idx=iou_idx
+            if self.training:
+                # 添加了改进算法
+                num1 = keep_idx.new_zeros(2700).long()
+                if gt_mask.sum() != 0 and i == 2: #判断大于40米有无目标
+                    # include gt boxes in the candidate rois
+                    iou3d = iou3d_utils.boxes_iou3d_gpu(cur_proposals, gt_boxes3d)  # (N, M)
+                    max_overlaps, gt_assignment = torch.max(iou3d, dim=1)  # values, indexs
+                    iou_idx = torch.nonzero((max_overlaps > 0)).view(-1) #iou3d阈值大于０
+                    num1[iou_idx] = iou_idx
+                    # print(keep_idx,iou_idx)
+                    if iou_idx.numel() < post_top_n_list[2]:
+                        #print(iou_idx.numel(),post_top_n_list[2])
+                        for i in range(len(keep_idx)):
+                            if keep_idx[i] not in iou_idx:
+                                num1[keep_idx[i]] = keep_idx[i]
+                            if num1[num1 > 0].numel() >= post_top_n_list[2]:
+                                break
+                        keep_idx = num1[num1 > 0]
+                        # print(keep_idx)
+                    elif iou_idx.numel() > post_top_n_list[2]:
+                        #print(iou_idx.numel(),post_top_n_list[2])
+                        #continue
+                        keep_idx = keep_idx[:post_top_n_list[i]]
             scores_single_list.append(cur_scores[keep_idx])
             proposals_single_list.append(cur_proposals[keep_idx])
 
@@ -145,7 +151,7 @@ class ProposalLayer(nn.Module):
         proposals_single = torch.cat(proposals_single_list, dim = 0)
         return scores_single, proposals_single
 
-    def score_based_proposal(self, scores, proposals, order, gt_boxes3d):
+    def score_based_proposal(self, scores, proposals, order, gt_boxes3d=None):
         """
          propose rois in two area based on the distance
         :param scores: (N)
